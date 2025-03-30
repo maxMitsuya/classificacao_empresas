@@ -56,3 +56,109 @@ output.eval_js('google.colab.kernel.proxyPort(5000)')
 # Download paralelizado dos arquivos
 with ThreadPoolExecutor(max_workers=5) as executor:
     executor.map(lambda args: download_file(*args), file_urls)
+```
+### 2. Processamento de Dados
+- Configuração otimizada do Spark para big data
+- Schemas tipados para cada categoria de arquivo
+- Funções auxiliares para operações complexas
+- Gerenciamento eficiente de memória
+
+```python
+# Configuração do Spark para grandes volumes
+spark = SparkSession.builder \
+    .config("spark.driver.memory", "16g") \
+    .config("spark.sql.shuffle.partitions", "200") \
+    .config("spark.sql.adaptive.enabled", "true") \
+    .getOrCreate()
+
+# Schema para arquivo de empresas
+empresas_header = ['CNPJ_Basico', 'Razao_Social', 'Natureza_Juridica', ...]
+schema_empresas = StructType([
+    StructField('CNPJ_Basico', StringType()),
+    StructField('Razao_Social', StringType()),
+    ...
+])
+
+# Função para joins otimizados
+def optimized_join(df_left, df_right, join_col):
+    return df_left.join(broadcast(df_right), join_col, 'left')
+```
+### 3. Transformação e Classificação
+- Limpeza e padronização de dados brutos
+- Conversão de formatos e tipos de dados
+- Enriquecimento com tabelas de referência
+- Mapeamento completo de CNAEs para categorias
+
+```python
+df = df.na.fill({
+    'Capital_Social': 0,
+    'Porte': 'NÃO INFORMADO',
+    'Municipio': 'NÃO CADASTRADO'
+})
+
+# Conversão de capital social para float
+df = df.withColumn(
+    'Capital_Social',
+    regexp_replace(
+        regexp_replace(col('Capital_Social'), '\\.', ''),
+        ',', '.').cast(FloatType())
+)
+
+# Join com tabela de CNAEs
+df = df.join(
+    broadcast(df_cnae),
+    df['Cnae_Fiscal_Principal'] == df_cnae['Codigo'],
+    'left'
+)
+
+# Classificação por segmento
+cnae_map = {
+    '62': 'Tecnologia',
+    '41': 'Construção',
+    '86': 'Saúde'
+}
+
+df = df.withColumn(
+    'Segmento',
+    when(col('Cnae_Fiscal_Principal').isin(cnae_map.keys()), 
+        col('Cnae_Fiscal_Principal')).otherwise('Outros')
+)
+```
+### 4. Análise e Persistência
+- Agregações estatísticas por categoria
+- Amostragem para validação
+- Persistência em formato otimizado
+- Visualização de resultados
+
+```python
+# Análise por segmento e porte
+df_analytics = df.groupBy('Segmento', 'Porte').agg(
+    count('*').alias('Qtd_Empresas'),
+    avg('Capital_Social').alias('Capital_Medio')
+)
+
+# Persistência em Parquet particionado
+df.write.partitionBy('Segmento') \
+    .mode('overwrite') \
+    .parquet('/content/drive/MyDrive/cnpj_processed')
+
+# Visualização de amostra
+display(df_analytics.orderBy('Qtd_Empresas', ascending=False).limit(10))
+```
+### Requisitos
+O projeto foi desenvolvido para rodar no Google Colab e inclui automaticamente todas as dependências necessárias:
+- Python 3.10+
+- PySpark 3.4+
+- BeautifulSoup 4.0+
+- Requests 2.0+
+
+### Limitações
+- Processamento completo requer ambiente com pelo menos 16GB de RAM
+- Download inicial dos arquivos pode demorar várias horas
+- Dados da Receita Federal são atualizados mensalmente
+
+### Contribuição
+Contribuições são bem-vindas! Sinta-se à vontade para:
+- Reportar issues
+- Sugerir melhorias no mapeamento de CNAEs
+- Otimizações no processamento
